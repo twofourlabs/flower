@@ -2,6 +2,7 @@ import logging
 
 from celery.schedules import crontab, schedule, solar
 from tornado import web
+from tornado.ioloop import IOLoop
 
 from ..views import BaseHandler
 
@@ -23,8 +24,28 @@ def format_schedule(s):
     return str(s)
 
 
+def _fetch_beat_schedule_from_workers(capp):
+    """Fetch beat_schedule from a running worker via inspect."""
+    try:
+        i = capp.control.inspect(timeout=5.0)
+        conf = i.conf()
+        if conf:
+            for worker_name, worker_conf in conf.items():
+                beat = worker_conf.get('beat_schedule')
+                if beat:
+                    logger.debug("Fetched beat_schedule from worker %s", worker_name)
+                    return beat
+    except Exception:
+        logger.exception("Failed to fetch beat_schedule from workers")
+    return {}
+
+
 def get_beat_schedules(capp):
     beat_schedule = getattr(capp.conf, 'beat_schedule', None) or {}
+
+    if not beat_schedule:
+        beat_schedule = _fetch_beat_schedule_from_workers(capp)
+
     result = []
     for name, entry in sorted(beat_schedule.items()):
         result.append({
@@ -40,9 +61,10 @@ def get_beat_schedules(capp):
 
 class BeatView(BaseHandler):
     @web.authenticated
-    def get(self):
+    async def get(self):
         json = self.get_argument('json', default=False, type=bool)
-        schedules = get_beat_schedules(self.capp)
+        schedules = await IOLoop.current().run_in_executor(
+            None, get_beat_schedules, self.capp)
 
         if json:
             self.write(dict(data=schedules))
