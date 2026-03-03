@@ -690,4 +690,27 @@ var flower = (function () {
 
     });
 
+    $(document).ready(function () {
+        if (!active_page('/beat')) {
+            return;
+        }
+
+        $('#beat-table').DataTable({
+            searching: true,
+            paging: true,
+            scrollCollapse: true,
+            lengthMenu: [15, 30, 50, 100],
+            pageLength: 15,
+            language: {
+                lengthMenu: 'Show _MENU_ schedules',
+                info: 'Showing _START_ to _END_ of _TOTAL_ schedules',
+                infoFiltered: '(filtered from _MAX_ total schedules)'
+            },
+            order: [
+                [0, "asc"]
+            ],
+        });
+
+    });
+
 }(jQuery));

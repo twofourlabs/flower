@@ -2,9 +2,10 @@ import os
 
 from tornado.web import StaticFileHandler, url
 
-from .api import control, tasks, workers
+from .api import beat, control, tasks, workers
 from .utils import gen_cookie_secret
 from .views import auth, monitor
+from .views.beat import BeatView
 from .views.broker import BrokerView
 from .views.error import NotFoundErrorHandler
 from .views.tasks import TasksDataTable, TasksView, TaskView
@@ -28,6 +29,7 @@ handlers = [
     url(r"/tasks", TasksView, name='tasks'),
     url(r"/tasks/datatable", TasksDataTable),
     url(r"/broker", BrokerView, name='broker'),
+    url(r"/beat", BeatView, name='beat'),
     # Worker API
     (r"/api/workers", workers.ListWorkers),
     (r"/api/worker/shutdown/(.+)", control.WorkerShutDown),
@@ -51,6 +53,8 @@ handlers = [
     (r"/api/task/timeout/(.+)", control.TaskTimout),
     (r"/api/task/rate-limit/(.+)", control.TaskRateLimit),
     (r"/api/task/revoke/(.+)", control.TaskRevoke),
+    # Beat API
+    (r"/api/beat/schedules", beat.ListSchedules),
     # Metrics
     (r"/metrics", monitor.Metrics),
     (r"/healthcheck", monitor.Healthcheck),

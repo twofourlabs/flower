@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block navbar %}
+{% module Template("navbar.html", active_tab="beat") %}
+{% end %}
+
+{% block container %}
+<div class="container-fluid">
+  <figure class="table-responsive mt-3">
+    <table id="beat-table" class="table table-bordered table-striped caption-top">
+      <caption>Celery Beat Schedule</caption>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Task</th>
+          <th>Schedule</th>
+          <th>Args</th>
+          <th>Kwargs</th>
+          <th>Options</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in schedules %}
+        <tr>
+          <td>{{ entry['name'] }}</td>
+          <td>{{ entry['task'] }}</td>
+          <td>{{ entry['schedule'] }}</td>
+          <td>{{ entry['args'] }}</td>
+          <td>{{ entry['kwargs'] }}</td>
+          <td>{{ entry['options'] }}</td>
+        </tr>
+        {% end %}
+      </tbody>
+    </table>
+  </figure>
+</div>
+{% end %}
