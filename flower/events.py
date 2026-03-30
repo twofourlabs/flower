@@ -237,7 +237,10 @@ class Events(threading.Thread):
                                          app=self.capp)
                     try_interval = 1
                     logger.debug("Capturing events...")
-                    recv.capture(limit=None, timeout=None, wakeup=True)
+                    # Use a timeout to periodically reconnect and prevent
+                    # stale pub/sub connections from blocking forever
+                    # (e.g. after ElastiCache maintenance or failover).
+                    recv.capture(limit=None, timeout=300, wakeup=True)
             except (KeyboardInterrupt, SystemExit):
                 try:
                     import _thread as thread
