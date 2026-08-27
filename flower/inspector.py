@@ -33,19 +33,31 @@ class Inspector:
 
     def _inspect(self, method, workername):
         destination = [workername] if workername else None
-        inspect = self.capp.control.inspect(timeout=self.timeout, destination=destination)
 
         logger.debug('Sending %s inspect command', method)
         start = time.time()
-        result = (
-            getattr(inspect, method)()
-            if method != 'active'
-            else getattr(inspect, method)(safe=True)
-        )
+        try:
+            # Use a dedicated connection instead of the app's pooled one. A
+            # pooled connection can go stale without raising (e.g. after an
+            # ElastiCache failover), and every subsequent inspect then returns
+            # no replies at all -- silently freezing the dashboard's worker
+            # list until flower is restarted.
+            with self.capp.connection() as conn:
+                inspect = self.capp.control.inspect(
+                    timeout=self.timeout, destination=destination,
+                    connection=conn)
+                result = (
+                    getattr(inspect, method)()
+                    if method != 'active'
+                    else getattr(inspect, method)(safe=True)
+                )
+        except Exception:
+            logger.warning("Inspect method %s raised", method, exc_info=True)
+            return
         logger.debug("Inspect command %s took %.2fs to complete", method, time.time() - start)
 
         if result is None or 'error' in result:
-            logger.warning("Inspect method %s failed", method)
+            logger.warning("Inspect method %s failed (no replies from any worker)", method)
             return
         for worker, response in result.items():
             if response is not None:

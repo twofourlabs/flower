@@ -49,6 +49,9 @@ define("xheaders", type=bool, default=False,
        help="enable support for the 'X-Real-Ip' and 'X-Scheme' headers.")
 define("auto_refresh", default=True,
        help="refresh workerss", type=bool)
+define("inspect_interval", default=60000, type=int,
+       help="interval (in milliseconds) at which workers are re-inspected so "
+            "that workers started after flower are discovered; 0 disables")
 define("purge_offline_workers", default=None, type=int,
        help="time (in seconds) after which offline workers are purged from workers")
 define("cookie_secret", type=str, default=token_urlsafe(64),
