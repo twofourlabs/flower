@@ -68,6 +68,7 @@ class Flower(tornado.web.Application):
         self.started = False
         self._transport = None
         self._purge_timer = None
+        self._inspect_timer = None
         self._queue_cache = None       # (timestamp, frozenset(names), result)
         self._queue_cache_ttl = getattr(self.options, 'queue_cache_ttl', 5.0)
 
@@ -93,6 +94,16 @@ class Flower(tornado.web.Application):
                                                  interval_ms)
             self._purge_timer.start()
 
+        # Re-inspect periodically. Without this, the worker list is only ever
+        # built at startup (or by someone loading /workers), so workers that
+        # start after flower does never appear -- and because the broker view
+        # derives its queue list from known workers, their queues stay hidden.
+        inspect_interval = getattr(self.options, 'inspect_interval', 0)
+        if inspect_interval:
+            self._inspect_timer = PeriodicCallback(self.update_workers,
+                                                   max(inspect_interval, 5000))
+            self._inspect_timer.start()
+
         self.io_loop.start()
 
     def stop(self):
@@ -106,6 +117,11 @@ class Flower(tornado.web.Application):
                     self._purge_timer.stop()
                 except Exception:
                     logger.debug("Error stopping purge timer", exc_info=True)
+            if self._inspect_timer:
+                try:
+                    self._inspect_timer.stop()
+                except Exception:
+                    logger.debug("Error stopping inspect timer", exc_info=True)
             logging.debug("Stopping executors...")
             self.executor.shutdown(wait=False)
             logging.debug("Stopping event loop...")
