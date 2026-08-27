@@ -74,5 +74,7 @@ define("task_runtime_metric_buckets", type=float, default=Histogram.DEFAULT_BUCK
 define("queue_cache_ttl", type=float, default=5.0,
        help="TTL in seconds for caching broker queue stats (0 to disable)")
 
+define("read_only", type=bool, default=False,
+       help="enable read only mode, disabling all operations")
 
 default_options = options
