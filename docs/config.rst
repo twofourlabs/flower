@@ -477,7 +477,8 @@ To enable authentication and specify an authentication provider, set the `auth_p
   - GitLab `flower.views.auth.GitLabLoginHandler`
   - Okta `flower.views.auth.OktaLoginHandler`
 
-See also :ref:`Authentication` for usage examples
+Custom handlers can be specified by their fully qualified import path. See
+:ref:`custom-authentication` for an example.
 
 .. _purge_offline_workers:
 
@@ -541,6 +542,18 @@ Sets the URI to which an OAuth 2.0 server redirects the user after successful au
 
 `oauth2_redirect_uri` option should be used with :ref:`auth`, :ref:`auth_provider`, :ref:`oauth2_key` and :ref:`oauth2_secret` options.
 
+.. _inspect_interval:
+
+inspect_interval
+~~~~~~~~~~~~~~~~
+
+Default: 60000
+
+Interval in milliseconds at which Flower re-inspects workers. Without this,
+the worker list is only built at startup, so workers that start afterwards
+are never discovered -- and because the broker view derives its queue list
+from known workers, their queues stay hidden too. Set to 0 to disable.
+
 .. _queue_cache_ttl:
 
 queue_cache_ttl
@@ -551,3 +564,18 @@ Default: 5.0
 TTL in seconds for caching broker queue stats. Set to 0 to disable caching.
 When many queues are configured (e.g. 10,000+), caching avoids re-fetching
 queue lengths from the broker on every page load or API call.
+.. _read_only:
+
+read_only
+~~~~~~~~~
+
+Default: False
+
+Enables read only mode, disabling all control operations in the UI and API.
+
+When read only mode is enabled, Flower will not allow any control operations to be performed on the system.
+
+Example::
+
+    $ celery flower --read_only
+

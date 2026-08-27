@@ -32,7 +32,8 @@ class ListWorkersTest(BaseApiTestCase):
         r = self.get('/api/workers?refresh=1')
         celery.control.inspect.assert_called_once_with(
             timeout=1,
-            destination=None
+            destination=None,
+            connection=mock.ANY
         )
 
         body = json.loads(r.body.decode("utf-8"))

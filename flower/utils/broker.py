@@ -9,7 +9,9 @@ from urllib.parse import quote, unquote, urljoin, urlparse
 from tornado import httpclient, ioloop
 
 try:
-    import redis
+    from redis import asyncio as redis
+    from redis.asyncio.retry import Retry
+    from redis.backoff import NoBackoff
 except ImportError:
     redis = None
 
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 class BrokerBase:
     def __init__(self, broker_url, *_, **__):
         purl = urlparse(broker_url)
-        self.host = purl.hostname
+        self.host = unquote(purl.hostname) if purl.hostname else purl.hostname
         self.port = purl.port
         self.vhost = purl.path[1:]
 
@@ -88,6 +90,8 @@ class RabbitMQ(BrokerBase):
 class RedisBase(BrokerBase):
     DEFAULT_SEP = '\x06\x16'
     DEFAULT_PRIORITY_STEPS = [0, 3, 6, 9]
+    DEFAULT_SOCKET_CONNECT_TIMEOUT = 1.0
+    DEFAULT_SOCKET_TIMEOUT = 2.0
 
     def __init__(self, broker_url, *_, **kwargs):
         super().__init__(broker_url)
@@ -101,18 +105,10 @@ class RedisBase(BrokerBase):
             'priority_steps', self.DEFAULT_PRIORITY_STEPS)
         self.sep = broker_options.get('sep', self.DEFAULT_SEP)
         self.broker_prefix = broker_options.get('global_keyprefix', '')
-
-    def close(self):
-        """Close the Redis connection and release resources."""
-        if self.redis is not None:
-            try:
-                if hasattr(self.redis, 'close'):
-                    self.redis.close()
-                elif hasattr(self.redis, 'connection_pool'):
-                    self.redis.connection_pool.disconnect()
-            except Exception:
-                logger.debug("Error closing Redis connection", exc_info=True)
-            self.redis = None
+        self.socket_connect_timeout = broker_options.get(
+            'socket_connect_timeout', self.DEFAULT_SOCKET_CONNECT_TIMEOUT)
+        self.socket_timeout = broker_options.get(
+            'socket_timeout', self.DEFAULT_SOCKET_TIMEOUT)
 
     def _q_for_pri(self, queue, pri):
         if pri not in self.priority_steps:
@@ -120,36 +116,27 @@ class RedisBase(BrokerBase):
         # pylint: disable=consider-using-f-string
         return '{0}{1}{2}'.format(*((queue, self.sep, pri) if pri else (queue, '', '')))
 
-    _PIPELINE_CHUNK_SIZE = 5000
-
     async def queues(self, names):
-        if not names:
-            return []
+        names = list(names)
+        try:
+            async with self.redis.pipeline() as pipeline:
+                for name in names:
+                    for priority in self.priority_steps:
+                        queue = self.broker_prefix + self._q_for_pri(
+                            name, priority)
+                        pipeline.llen(queue)
+                lengths = iter(await pipeline.execute())
 
-        steps = len(self.priority_steps)
-
-        # Build all Redis key names upfront
-        all_keys = []
-        for name in names:
-            for pri in self.priority_steps:
-                all_keys.append(self.broker_prefix + self._q_for_pri(name, pri))
-
-        # Execute pipelined LLEN in chunks to avoid overwhelming Redis
-        # with a single 400k-command pipeline for very large queue counts.
-        all_results = []
-        chunk_size = self._PIPELINE_CHUNK_SIZE
-        for start in range(0, len(all_keys), chunk_size):
-            pipe = self.redis.pipeline(transaction=False)
-            for key in all_keys[start:start + chunk_size]:
-                pipe.llen(key)
-            all_results.extend(pipe.execute())
-
-        queue_stats = []
-        for i, name in enumerate(names):
-            offset = i * steps
-            total = sum(all_results[offset:offset + steps])
-            queue_stats.append({'name': name, 'messages': total})
-        return queue_stats
+            return [{
+                'name': name,
+                'messages': sum(
+                    next(lengths) for _ in self.priority_steps),
+            } for name in names]
+        finally:
+            if hasattr(self.redis, 'aclose'):
+                await self.redis.aclose()
+            else:
+                await self.redis.close()
 
 
 class Redis(RedisBase):
@@ -179,7 +166,10 @@ class Redis(RedisBase):
             'port': self.port,
             'db': self.vhost,
             'username': self.username,
-            'password': self.password
+            'password': self.password,
+            'socket_connect_timeout': self.socket_connect_timeout,
+            'socket_timeout': self.socket_timeout,
+            'retry': Retry(NoBackoff(), 0),
         }
 
     def _get_redis_client(self):
@@ -218,9 +208,18 @@ class RedisSentinel(RedisBase):
         return master_name
 
     def _get_redis_client(self, broker_options, broker_use_ssl):
+        sentinel_kwargs = dict(broker_options.get('sentinel_kwargs') or {})
+        sentinel_kwargs.setdefault(
+            'socket_connect_timeout', self.socket_connect_timeout)
+        sentinel_kwargs.setdefault(
+            'socket_timeout', self.socket_timeout)
+        sentinel_kwargs.setdefault('retry', Retry(NoBackoff(), 0))
         connection_kwargs = {
             'password': self.password,
-            'sentinel_kwargs': broker_options.get('sentinel_kwargs')
+            'sentinel_kwargs': sentinel_kwargs,
+            'socket_connect_timeout': self.socket_connect_timeout,
+            'socket_timeout': self.socket_timeout,
+            'retry': Retry(NoBackoff(), 0),
         }
         if isinstance(broker_use_ssl, dict):
             connection_kwargs['ssl'] = True
@@ -236,8 +235,11 @@ class RedisSocket(RedisBase):
 
     def __init__(self, broker_url, *args, **kwargs):
         super().__init__(broker_url, *args, **kwargs)
-        self.redis = redis.Redis(unix_socket_path='/' + self.vhost,
-                                 password=self.password)
+        self.redis = redis.Redis(
+            unix_socket_path='/' + self.vhost,
+            password=self.password,
+            socket_timeout=self.socket_timeout,
+            retry=Retry(NoBackoff(), 0))
 
 
 class RedisSsl(Redis):
@@ -249,7 +251,7 @@ class RedisSsl(Redis):
 
     def __init__(self, broker_url, *args, **kwargs):
         if 'broker_use_ssl' not in kwargs:
-            raise ValueError('rediss broker requires broker_use_ssl')
+            raise ValueError('Redis SSL broker requires broker_use_ssl')
         self.broker_use_ssl = kwargs.get('broker_use_ssl', {})
         super().__init__(broker_url, *args, **kwargs)
 
@@ -266,7 +268,7 @@ class Broker:
 
     Supported schemes:
     ``amqp`` or ``amqps``  -> :class:`RabbitMQ`
-    ``redis``              -> :class:`Redis`
+    ``redis``              -> :class:`Redis` or :class:`RedisSsl`
     ``rediss``             -> :class:`RedisSsl`
     ``redis+socket``       -> :class:`RedisSocket`
     ``sentinel``           -> :class:`RedisSentinel`
@@ -277,6 +279,8 @@ class Broker:
         if scheme in ('amqp', 'amqps'):
             return RabbitMQ(broker_url, *args, **kwargs)
         if scheme == 'redis':
+            if kwargs.get('broker_use_ssl'):
+                return RedisSsl(broker_url, *args, **kwargs)
             return Redis(broker_url, *args, **kwargs)
         if scheme == 'rediss':
             return RedisSsl(broker_url, *args, **kwargs)
