@@ -6,6 +6,9 @@ Configuration
 Flower is highly customizable. You can pass configuration options through the command line,
 configuration file, or environment variables. For a full list of options, see the `Option Reference`_ section.
 
+When the same option is set in more than one place, the command line takes precedence
+over the configuration file, which takes precedence over environment variables.
+
 Command line
 ------------
 
@@ -152,7 +155,7 @@ The `broker_api` option should be set to the URL of the RabbitMQ HTTP API, inclu
 
 Example::
 
-    $ celery flower broker-api="http://username:password@rabbitmq-server-name:15672/api/"
+    $ celery flower --broker-api="http://username:password@rabbitmq-server-name:15672/api/"
 
 .. Note:: By default, the RabbitMQ Management Plugin is not enabled. To enable it, run the following command::
 
@@ -577,5 +580,5 @@ When read only mode is enabled, Flower will not allow any control operations to 
 
 Example::
 
-    $ celery flower --read_only
+    $ celery flower --read-only
 

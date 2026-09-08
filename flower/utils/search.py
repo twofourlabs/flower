@@ -358,9 +358,8 @@ class TaskSearchEngine:
 
     # pylint: disable=too-many-arguments,too-many-locals
     def search(self, tasks, query='', *, task_type=None, worker=None, state=None,
-               received_start=None, received_end=None, started_start=None,
-               started_end=None, sort_by=None, descending=False, offset=0,
-               limit=None):
+               received_start=None, received_end=None, sort_by=None,
+               descending=False, offset=0, limit=None):
         task_map = getattr(tasks, 'data', tasks)
         task_ids = set(self.documents)
         task_ids.intersection_update(task_map.keys())
@@ -375,13 +374,11 @@ class TaskSearchEngine:
             task_ids.intersection_update(
                 self.exact_postings['state'].get(_normalize(state), ()))
 
-        if any(value is not None for value in (
-                received_start, received_end, started_start, started_end)):
+        if received_start is not None or received_end is not None:
             task_ids = {
                 task_id for task_id in task_ids
                 if _task_in_time_range(
-                    task_map[task_id], received_start, received_end,
-                    started_start, started_end)
+                    task_map[task_id], received_start, received_end)
             }
 
         task_ids = self.matching_ids(query, task_ids)
@@ -482,18 +479,11 @@ def _remove_posting(index, value, task_id):
         del index[value]
 
 
-# pylint: disable=too-many-return-statements
-def _task_in_time_range(task, received_start, received_end,
-                        started_start, started_end):
+def _task_in_time_range(task, received_start, received_end):
     received = getattr(task, 'received', None)
-    started = getattr(task, 'started', None)
     if received_start is not None and received is not None and received < received_start:
         return False
     if received_end is not None and received is not None and received > received_end:
-        return False
-    if started_start is not None and started is not None and started < started_start:
-        return False
-    if started_end is not None and started is not None and started > started_end:
         return False
     return True
 

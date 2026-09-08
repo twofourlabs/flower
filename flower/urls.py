@@ -16,6 +16,7 @@ settings = dict(
     cookie_secret=gen_cookie_secret(),
     static_url_prefix='/static/',
     login_url='/login',
+    xsrf_cookies=True,
 )
 
 
@@ -58,7 +59,7 @@ handlers = [
     (r"/static/(.*)", StaticFileHandler,
      {"path": settings['static_path']}),
     # Auth
-    (r"/login", auth.LoginHandler),
+    (r"/login/?", auth.LoginHandler),
 
     # Error
     (r".*", NotFoundErrorHandler),

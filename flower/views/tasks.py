@@ -30,14 +30,14 @@ class TasksDataTable(BaseHandler):
     # pylint: disable=too-many-locals
     def get(self):
         app = self.application
-        draw = self.get_argument('draw', type=int)
-        start = self.get_argument('start', type=int)
-        length = self.get_argument('length', type=int)
-        search = self.get_argument('search[value]', type=str)
+        draw = self.get_argument('draw', type=int, required=True)
+        start = self.get_argument('start', type=int, required=True)
+        length = self.get_argument('length', type=int, required=True)
+        search = self.get_argument('search[value]', '', type=str)
 
-        column = self.get_argument('order[0][column]', type=int)
-        sort_by = self.get_argument(f'columns[{column}][data]', type=str)
-        sort_order = self.get_argument('order[0][dir]', type=str) == 'desc'
+        column = self.get_argument('order[0][column]', type=int, required=True)
+        sort_by = self.get_argument(f'columns[{column}][data]', '', type=str)
+        sort_order = self.get_argument('order[0][dir]', '', type=str) == 'desc'
 
         try:
             page = search_tasks(

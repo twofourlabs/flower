@@ -13,7 +13,11 @@ class WorkerView(BaseHandler):
     @web.authenticated
     async def get(self, name):
         try:
-            self.application.update_workers(workername=name)
+            update = self.application.update_workers(workername=name)
+            # wait for inspection only when nothing is cached yet
+            # cached workers render immediately and refresh in the background
+            if 'stats' not in self.application.workers.get(name, {}):
+                await update
         except Exception as e:
             logger.error(e)
 
@@ -63,8 +67,9 @@ class WorkersView(BaseHandler):
                     continue
 
                 heartbeats = info.get('heartbeats', [])
-                last_heartbeat = int(max(heartbeats)) if heartbeats else None
-                if not last_heartbeat or timestamp - last_heartbeat > options.purge_offline_workers:
+                last_seen = max(heartbeats) if heartbeats else \
+                    getattr(events.workers[name], 'timestamp', None)
+                if not last_seen or timestamp - int(last_seen) >= options.purge_offline_workers:
                     offline_workers.append(name)
 
             for name in offline_workers:
@@ -80,20 +85,4 @@ class WorkersView(BaseHandler):
 
     @classmethod
     def _as_dict(cls, worker):
-        if hasattr(worker, '_fields'):
-            return dict((k, getattr(worker, k)) for k in worker._fields)
-        return cls._info(worker)
-
-    @classmethod
-    def _info(cls, worker):
-        _fields = ('hostname', 'pid', 'freq', 'heartbeats', 'clock',
-                   'active', 'processed', 'loadavg', 'sw_ident',
-                   'sw_ver', 'sw_sys')
-
-        def _keys():
-            for key in _fields:
-                value = getattr(worker, key, None)
-                if value is not None:
-                    yield key, value
-
-        return dict(_keys())
+        return dict((k, getattr(worker, k)) for k in worker._fields)

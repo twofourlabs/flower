@@ -40,7 +40,7 @@ class TestEventsBackpressure(unittest.TestCase):
     def test_on_event_drops_when_queue_full(self):
         capp = celery.Celery()
         io_loop = MagicMock()
-        events = Events(capp, io_loop)
+        events = Events(capp, io_loop, max_tasks_in_memory=10)
         # Fill the queue
         for i in range(events._BACKPRESSURE_MAXSIZE):
             events.on_event({'hostname': 'w1', 'type': 'worker-heartbeat'})
@@ -52,7 +52,7 @@ class TestEventsBackpressure(unittest.TestCase):
     def test_drop_logging_is_rate_limited(self):
         capp = celery.Celery()
         io_loop = MagicMock()
-        events = Events(capp, io_loop)
+        events = Events(capp, io_loop, max_tasks_in_memory=10)
         # Fill the queue
         for i in range(events._BACKPRESSURE_MAXSIZE):
             events.on_event({'hostname': 'w1', 'type': 'worker-heartbeat'})
@@ -77,7 +77,7 @@ class TestEventsBackpressure(unittest.TestCase):
     def test_drain_events_processes_batch(self):
         capp = celery.Celery()
         io_loop = MagicMock()
-        events = Events(capp, io_loop)
+        events = Events(capp, io_loop, max_tasks_in_memory=10)
         events.state = MagicMock()
 
         for i in range(10):
@@ -92,7 +92,7 @@ class TestEventsBackpressure(unittest.TestCase):
     def test_drain_events_handles_errors_gracefully(self):
         capp = celery.Celery()
         io_loop = MagicMock()
-        events = Events(capp, io_loop)
+        events = Events(capp, io_loop, max_tasks_in_memory=10)
         events.state = MagicMock()
         events.state.event.side_effect = [RuntimeError("test"), None]
 
@@ -108,7 +108,7 @@ class TestEventsBackpressure(unittest.TestCase):
     def test_drain_respects_batch_size(self):
         capp = celery.Celery()
         io_loop = MagicMock()
-        events = Events(capp, io_loop)
+        events = Events(capp, io_loop, max_tasks_in_memory=10)
         events.state = MagicMock()
 
         count = events._DRAIN_BATCH_SIZE + 100
@@ -139,7 +139,8 @@ class TestEventsStopSafety(unittest.TestCase):
     def test_stop_calls_save_state_even_if_timer_fails(self):
         capp = celery.Celery()
         io_loop = MagicMock()
-        events = Events(capp, io_loop, persistent=True, db='test_db')
+        events = Events(capp, io_loop, persistent=True, db='test_db',
+                        max_tasks_in_memory=10)
 
         events.timer = MagicMock()
         events.timer.stop.side_effect = RuntimeError("timer error")

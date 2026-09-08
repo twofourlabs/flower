@@ -15,7 +15,7 @@ def format_time(time, tz):
     return dt.strftime("%Y-%m-%d %H:%M:%S.%f %Z")
 
 
-def humanize(obj, type=None, length=None):
+def humanize(obj, type=None):
     if obj is None:
         obj = ''
     elif type and type.startswith('time'):
@@ -39,6 +39,4 @@ def humanize(obj, type=None, length=None):
     elif isinstance(obj, list):
         if all(isinstance(x, (int, float, str)) for x in obj):
             obj = ', '.join(map(str, obj))
-    if length is not None and len(obj) > length:
-        obj = obj[:length - 4] + ' ...'
     return obj

@@ -270,8 +270,8 @@ Autoscale worker pool
         if not self.is_worker(workername):
             raise web.HTTPError(404, f"Unknown worker '{workername}'")
 
-        min = self.get_argument('min', type=int)
-        max = self.get_argument('max', type=int)
+        min = self.get_argument('min', type=int, required=True)
+        max = self.get_argument('max', type=int, required=True)
 
         logger.info("Autoscaling '%s' worker by '%s'",
                     workername, (min, max))
@@ -300,7 +300,7 @@ Start consuming from a queue
 
 .. sourcecode:: http
 
-  POST /api/worker/queue/add-consumer/celery@worker2?queue=sample-queue
+  POST /api/worker/queue/add-consumer/celery@worker2?queue=sample-queue HTTP/1.1
   Content-Length: 0
   Content-Type: application/x-www-form-urlencoded; charset=utf-8
   Host: localhost:5555
@@ -330,7 +330,7 @@ Start consuming from a queue
         if not self.is_worker(workername):
             raise web.HTTPError(404, f"Unknown worker '{workername}'")
 
-        queue = self.get_argument('queue')
+        queue = self.get_argument('queue', required=True)
 
         logger.info("Adding consumer '%s' to worker '%s'",
                     queue, workername)
@@ -358,7 +358,7 @@ Stop consuming from a queue
 
 .. sourcecode:: http
 
-  POST /api/worker/queue/cancel-consumer/celery@worker2?queue=sample-queue
+  POST /api/worker/queue/cancel-consumer/celery@worker2?queue=sample-queue HTTP/1.1
   Content-Length: 0
   Content-Type: application/x-www-form-urlencoded; charset=utf-8
   Host: localhost:5555
@@ -388,7 +388,7 @@ Stop consuming from a queue
         if not self.is_worker(workername):
             raise web.HTTPError(404, f"Unknown worker '{workername}'")
 
-        queue = self.get_argument('queue')
+        queue = self.get_argument('queue', required=True)
 
         logger.info("Canceling consumer '%s' from worker '%s'",
                     queue, workername)
@@ -416,7 +416,7 @@ Revoke a task
 
 .. sourcecode:: http
 
-  POST /api/task/revoke/1480b55c-b8b2-462c-985e-24af3e9158f9?terminate=true
+  POST /api/task/revoke/1480b55c-b8b2-462c-985e-24af3e9158f9?terminate=true HTTP/1.1
   Content-Length: 0
   Content-Type: application/x-www-form-urlencoded; charset=utf-8
   Host: localhost:5555
@@ -491,7 +491,7 @@ Change soft and hard time limits for a task
         if self.application.options.read_only:
             raise web.HTTPError(403, "Read only mode is enabled")
 
-        workername = self.get_argument('workername')
+        workername = self.get_argument('workername', required=True)
         hard = self.get_argument('hard', default=None, type=float)
         soft = self.get_argument('soft', default=None, type=float)
 
@@ -556,8 +556,8 @@ Change rate limit for a task
         if self.application.options.read_only:
             raise web.HTTPError(403, "Read only mode is enabled")
 
-        workername = self.get_argument('workername')
-        ratelimit = self.get_argument('ratelimit')
+        workername = self.get_argument('workername', required=True)
+        ratelimit = self.get_argument('ratelimit', required=True)
 
         if taskname not in self.capp.tasks:
             raise web.HTTPError(404, f"Unknown task '{taskname}'")

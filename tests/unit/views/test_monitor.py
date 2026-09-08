@@ -44,6 +44,28 @@ class PrometheusTests(AsyncHTTPTestCase):
         self.assertTrue(f'flower_worker_online{{worker="{worker_name}"}} 1.0' in metrics)
         self.assertTrue(f'flower_worker_number_of_currently_executing_tasks{{worker="{worker_name}"}} 1.0' in metrics)
 
+    def test_task_runtime_metric_observed_from_events(self):
+        state = EventsState()
+        worker_name = 'runtime-worker'
+        task_name = 'runtime-task'
+        state.get_or_create_worker(worker_name)
+        events = task_succeeded_events(
+            worker=worker_name, name=task_name, id='321', runtime=0.5)
+        for i, e in enumerate(events):
+            e['clock'] = i
+            e['local_received'] = time.time()
+            state.event(e)
+        self.app.events.state = state
+
+        metrics = self.get('/metrics').body.decode('utf-8')
+
+        self.assertIn(
+            f'flower_task_runtime_seconds_count{{task="{task_name}",worker="{worker_name}"}} 1.0',
+            metrics)
+        self.assertIn(
+            f'flower_task_runtime_seconds_sum{{task="{task_name}",worker="{worker_name}"}} 0.5',
+            metrics)
+
     def test_task_prefetch_time_metric(self):
         state = EventsState()
         worker_name = 'worker1'

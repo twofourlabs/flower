@@ -23,7 +23,7 @@ If you run Flower behind custom location, make sure :ref:`url_prefix` option
 value equals to the location path.
 
 You have to use either environment variable `FLOWER_URL_PREFIX=flower`
-or command parameter `--url_prefix=flower` when you run it
+or command parameter `--url-prefix=flower` when you run it
 via `celery`. With that being set you need the following `nginx` configuration:
 
 .. code-block:: nginx

@@ -9,8 +9,20 @@ var flower = (function () {
     document.querySelectorAll('[data-flower-tooltip]').forEach(function (element) {
         var tooltip = bootstrap.Tooltip.getOrCreateInstance(element);
 
+        element.addEventListener('show.bs.tooltip', function () {
+            document.querySelectorAll('[data-flower-tooltip]').forEach(function (other) {
+                if (other !== element) {
+                    bootstrap.Tooltip.getInstance(other).hide();
+                }
+            });
+        });
+
         element.addEventListener('show.bs.dropdown', function () {
             tooltip.hide();
+            tooltip.disable();
+        });
+        element.addEventListener('hidden.bs.dropdown', function () {
+            tooltip.enable();
         });
     });
 
@@ -66,11 +78,36 @@ var flower = (function () {
         return '';
     }
 
+    function getCookie(name) {
+        var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+        return match ? decodeURIComponent(match.pop()) : '';
+    }
+
+    // Send the XSRF token on state-changing requests for the server's CSRF check
+    $.ajaxSetup({
+        beforeSend: function (xhr, settings) {
+            if (!/^(GET|HEAD|OPTIONS)$/i.test(settings.type)) {
+                xhr.setRequestHeader('X-XSRFToken', getCookie('_xsrf'));
+            }
+        }
+    });
+
     //https://github.com/DataTables/DataTables/blob/1.10.11/media/js/jquery.dataTables.js#L14882
     function htmlEscapeEntities(d) {
         return typeof d === 'string' ?
             d.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') :
             d;
+    }
+
+    // DataTables writes cell values straight to innerHTML, so a column that
+    // does not build its own markup must be escaped
+    function withDefaultRenderer(columnDefs) {
+        columnDefs.forEach(function (def) {
+            if (!def.render) {
+                def.render = htmlEscapeEntities;
+            }
+        });
+        return columnDefs;
     }
 
     function workerNameLink(workerName) {
@@ -658,7 +695,7 @@ var flower = (function () {
                     $(api.column(column).footer()).html(footer);
                 }
             },
-            columnDefs: [{
+            columnDefs: withDefaultRenderer([{
                 targets: 0,
                 data: 'hostname',
                 type: 'natural',
@@ -727,13 +764,13 @@ var flower = (function () {
                             });
                         return '<span class="load-average" title="System load averages over 1, 5, and 15 minutes"' +
                             ' aria-label="System load averages: ' + periods.map(function (period, index) {
-                                return period + ' ' + data[index];
+                                return period + ' ' + htmlEscapeEntities(String(data[index]));
                             }).join(', ') + '">' +
                             values.join('') + '</span>';
                     }
-                    return data || 'N/A';
+                    return data ? htmlEscapeEntities(String(data)) : 'N/A';
                 }
-            }, ],
+            }, ]),
         });
 
         setWorkerColumnVisibility(workersTable, mobileWorkers.matches);
@@ -766,7 +803,8 @@ var flower = (function () {
             processing: true,
             serverSide: true,
             colReorder: true,
-            lengthChange: false,
+            dom: "frt<'dt-footer'lip>",
+            lengthMenu: [15, 30, 50, 100],
             pageLength: 15,
             stateSave: true,
             stateLoadParams: function (settings, data) {
@@ -774,8 +812,11 @@ var flower = (function () {
                     data.search.search = 'state:' + initialState;
                 }
             },
+            initComplete: function () {
+                $('#tasks-table_length select').attr('aria-label', 'Tasks per page');
+            },
             language: {
-                lengthMenu: 'Show _MENU_ tasks',
+                lengthMenu: '_MENU_',
                 info: 'Showing _START_ to _END_ of _TOTAL_ tasks',
                 infoEmpty: 'No tasks to show',
                 infoFiltered: '(filtered from _MAX_ total tasks)',
@@ -806,7 +847,7 @@ var flower = (function () {
             oSearch: {
                 "sSearch": initialState ? 'state:' + initialState : ''
             },
-            columnDefs: [{
+            columnDefs: withDefaultRenderer([{
                 targets: 0,
                 data: 'name',
                 visible: isColumnVisible('name'),
@@ -834,18 +875,26 @@ var flower = (function () {
                 visible: isColumnVisible('state'),
                 className: "text-center",
                 render: function (data, type, full, meta) {
+                    var badge;
                     switch (data) {
                     case 'SUCCESS':
-                        return '<span class="badge text-bg-success">' + data + '</span>';
+                        badge = 'text-bg-success';
+                        break;
                     case 'FAILURE':
-                        return '<span class="badge text-bg-danger">' + data + '</span>';
+                        badge = 'text-bg-danger';
+                        break;
                     case 'STARTED':
-                        return '<span class="badge task-state-started">' + data + '</span>';
+                        badge = 'task-state-started';
+                        break;
                     case 'RETRY':
-                        return '<span class="badge text-bg-warning">' + data + '</span>';
+                        badge = 'text-bg-warning';
+                        break;
                     default:
-                        return '<span class="badge text-bg-secondary">' + data + '</span>';
+                        badge = 'text-bg-secondary';
                     }
+                    // celery reports unknown task-* events as custom states
+                    return '<span class="badge ' + badge + '">' +
+                        htmlEscapeEntities(data) + '</span>';
                 }
             }, {
                 targets: 3,
@@ -951,7 +1000,7 @@ var flower = (function () {
                 targets: 16,
                 data: 'eta',
                 visible: isColumnVisible('eta')
-            }, ],
+            }, ]),
         });
 
         setTaskColumnVisibility(tasksTable, mobileTasks.matches);

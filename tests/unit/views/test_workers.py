@@ -1,6 +1,6 @@
+import asyncio
 import json
 import time
-import unittest
 from unittest.mock import patch
 
 from celery.events import Event
@@ -31,7 +31,6 @@ class WorkersTests(AsyncHTTPTestCase):
         self.assertIn('Load Average', str(r.body))
         self.assertNotIn('<tr id=', str(r.body))
 
-    @unittest.skip('disable temporarily')
     def test_unknown_worker(self):
         with self.mock_option("inspect_timeout", 1.0):
             r = self.get('/worker/unknown')
@@ -76,6 +75,26 @@ class WorkersTests(AsyncHTTPTestCase):
 
         self.assertEqual(200, r.code)
         self.assertEqual(0, len(table.rows()))
+
+    def test_purge_offline_workers_grace_period(self):
+        state = EventsState()
+        state.get_or_create_worker('worker1')
+        state.event(Event('worker-online', hostname='worker1',
+                          local_received=time.time()))
+        state.event(Event('worker-offline', hostname='worker1',
+                          local_received=time.time()))
+        self.app.events.state = state
+
+        with patch('flower.views.workers.options') as mock_options:
+            mock_options.purge_offline_workers = 120
+            r = self.get('/workers')
+
+        table = HtmlTableParser()
+        table.parse(str(r.body))
+
+        self.assertEqual(200, r.code)
+        self.assertEqual(1, len(table.rows()))
+        self.assertTrue(table.get_row('worker1'))
 
     def test_single_workers_online(self):
         state = EventsState()
@@ -311,6 +330,21 @@ class WorkersTests(AsyncHTTPTestCase):
             res = self.get('/workers?refresh=1')
             self.assertEqual(200, res.code)
             update_workers_mock.assert_called()
+
+    def test_worker_page_waits_for_inspection(self):
+        stats = {'total': {'tasks.add': 10},
+                 'broker': {'hostname': 'redis', 'userid': None,
+                            'virtual_host': '/', 'port': 6379}}
+
+        async def populate(workername=None):
+            self.app.inspector.workers[workername]['stats'] = stats
+
+        def inspect(workername=None):
+            return asyncio.ensure_future(populate(workername))
+
+        with patch.object(self.get_app(), "update_workers", side_effect=inspect):
+            res = self.get('/worker/worker1')
+            self.assertEqual(200, res.code)
 
     def test_workers_page(self):
         state = EventsState()

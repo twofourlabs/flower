@@ -64,6 +64,3 @@ class TestHumanize(unittest.TestCase):
                          humanize('max_tasks_per_child'))
         self.assertEqual('URI prefix', humanize('uri_prefix'))
         self.assertEqual('Max concurrency', humanize('max-concurrency'))
-
-    def test_truncate(self):
-        self.assertEqual(humanize("1234567", length=6), '12 ...')

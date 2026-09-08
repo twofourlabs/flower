@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, Mock, PropertyMock, patch
 
 import celery.states as states
 from celery.events import Event
+from celery.exceptions import TimeoutError as CeleryTimeoutError
 from celery.result import AsyncResult
 from kombu.exceptions import OperationalError
 from tornado.options import options
@@ -36,6 +37,52 @@ class ApplyTests(BaseApiTestCase):
         body = bytes.decode(r.body)
         self.assertEqual(result, json.loads(body)['result'])
         task.apply_async.assert_called_once_with(args=[], kwargs={})
+
+    def test_apply_unserializable_result_returns_repr(self):
+        result = object()
+        with patch('celery.result.AsyncResult.state', new_callable=PropertyMock) as mock_state:
+            with patch('celery.result.AsyncResult.result', new_callable=PropertyMock) as mock_result:
+                mock_state.return_value = states.SUCCESS
+                mock_result.return_value = result
+
+                ar = AsyncResult(123)
+                ar.get = Mock(return_value=result)
+
+                task = self._app.capp.tasks['foo'] = Mock()
+                task.apply_async = Mock(return_value=ar)
+
+                r = self.post('/api/task/apply/foo', body='')
+
+        self.assertEqual(200, r.code)
+        body = json.loads(r.body.decode('utf-8'))
+        self.assertEqual(repr(result), body['result'])
+
+    def test_apply_timeout_expiry_returns_state(self):
+        with patch('celery.result.AsyncResult.state', new_callable=PropertyMock) as mock_state:
+            mock_state.return_value = states.PENDING
+
+            ar = AsyncResult(123)
+            ar.get = Mock(side_effect=CeleryTimeoutError())
+
+            task = self._app.capp.tasks['foo'] = Mock()
+            task.apply_async = Mock(return_value=ar)
+
+            r = self.post('/api/task/apply/foo', body='{"timeout": 0.1}')
+
+        self.assertEqual(200, r.code)
+        body = json.loads(r.body.decode('utf-8'))
+        self.assertEqual(states.PENDING, body['state'])
+        self.assertNotIn('result', body)
+        ar.get.assert_called_once_with(propagate=False, timeout=0.1)
+        task.apply_async.assert_called_once_with(args=[], kwargs={})
+
+    def test_apply_invalid_timeout(self):
+        task = self._app.capp.tasks['foo'] = Mock()
+
+        r = self.post('/api/task/apply/foo', body='{"timeout": "abc"}')
+
+        self.assertEqual(400, r.code)
+        task.apply_async.assert_not_called()
 
     def test_apply_read_only(self):
         with patch.object(options.mockable(), 'read_only', True):
@@ -154,6 +201,41 @@ class TaskResultTests(BaseApiTestCase):
         self.assertEqual(503, r.code)
 
 
+class TaskResultTimeoutExpiryTests(BaseApiTestCase):
+    @patch('flower.api.tasks.AsyncResult')
+    def test_timeout_expiry_returns_state(self, async_result):
+        result = Mock()
+        result.id = '123'
+        result.state = states.STARTED
+        result.backend.connection_errors = ()
+        result.get.side_effect = CeleryTimeoutError()
+        async_result.return_value = result
+
+        r = self.get('/api/task/result/123?timeout=1')
+
+        self.assertEqual(200, r.code)
+        body = json.loads(r.body.decode('utf-8'))
+        self.assertEqual(states.STARTED, body['state'])
+        self.assertNotIn('result', body)
+
+
+class TaskResultInvalidTimeoutTests(BaseApiTestCase):
+    def test_invalid_timeout(self):
+        r = self.get('/api/task/result/123?timeout=abc')
+
+        self.assertEqual(400, r.code)
+        self.assertIn('Invalid argument', r.body.decode('utf-8'))
+
+
+class QueueLengthsTests(BaseApiTestCase):
+    @patch('flower.views.Broker', side_effect=NotImplementedError)
+    def test_unsupported_broker(self, _broker):
+        r = self.get('/api/queues/length')
+
+        self.assertEqual(404, r.code)
+        self.assertIn('broker is not supported', r.body.decode('utf-8'))
+
+
 class TaskAbortTests(BaseApiTestCase):
     @patch('flower.api.tasks.AbortableAsyncResult')
     def test_backend_connection_failure_returns_service_unavailable(
@@ -188,6 +270,12 @@ class TaskTests(BaseApiTestCase):
     def test_task_info(self):
         self.get('/api/task/info/123')
 
+    def test_unknown_task_error_preserves_percent(self):
+        r = self.get('/api/task/info/foo%25bar')
+
+        self.assertEqual(404, r.code)
+        self.assertIn("Unknown task 'foo%bar'", r.body.decode('utf-8'))
+
     def test_tasks_pagination(self):
         state = EventsState()
         state.get_or_create_worker('worker1')
@@ -200,8 +288,6 @@ class TaskTests(BaseApiTestCase):
                                         id='789')
         events += task_succeeded_events(worker='worker1', name='task4',
                                         id='666')
-
-        # for i, e in enumerate(sorted(events, key=lambda event: event['uuid'])):
 
         for i, e in enumerate(events):
             e['clock'] = i
@@ -296,6 +382,28 @@ class TaskTests(BaseApiTestCase):
         self.assertEqual(1, len(table))
         firstFetchedTaskName = table[list(table)[0]]['name']
         self.assertEqual("task1", firstFetchedTaskName)
+
+    def test_invalid_sort_by(self):
+        r = self.get('/api/tasks?sort_by=bogus')
+
+        self.assertEqual(400, r.code)
+        self.assertIn('Invalid sort_by', r.body.decode('utf-8'))
+
+    def test_valid_sort_by_descending(self):
+        r = self.get('/api/tasks?sort_by=-received')
+
+        self.assertEqual(200, r.code)
+
+    def test_invalid_limit(self):
+        r = self.get('/api/tasks?limit=xyz')
+
+        self.assertEqual(400, r.code)
+
+    def test_invalid_received_start(self):
+        r = self.get('/api/tasks?received_start=garbage')
+
+        self.assertEqual(400, r.code)
+        self.assertIn('received_start', r.body.decode('utf-8'))
 
     def test_invalid_search(self):
         r = self.get('/api/tasks?search=ab')

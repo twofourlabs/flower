@@ -227,16 +227,13 @@ class TestTaskSearchEngine(unittest.TestCase):
 
     def test_exact_filters_and_time_ranges(self):
         self.tasks['1'].received = 10
-        self.tasks['1'].started = 20
         self.tasks['3'].received = 30
-        self.tasks['3'].started = 40
 
         page = self.engine.search(
             self.tasks,
             task_type='tasks.fetch',
             worker='worker-a',
             received_start=20,
-            started_end=40,
         )
 
         self.assertEqual(['3'], page.task_ids)

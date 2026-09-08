@@ -14,6 +14,12 @@ class TaskTest(AsyncHTTPTestCase):
         self.assertEqual(404, r.code)
         self.assertTrue('Unknown task' in str(r.body))
 
+    def test_unknown_task_error_preserves_percent(self):
+        r = self.get('/task/foo%25bar')
+        self.assertEqual(404, r.code)
+        self.assertIn('foo%bar', r.body.decode('utf-8'))
+        self.assertNotIn('foo%%bar', r.body.decode('utf-8'))
+
 
 class TaskControlsTest(AsyncHTTPTestCase):
     def setUp(self):
