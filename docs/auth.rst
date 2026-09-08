@@ -183,7 +183,7 @@ that returns a verified identity, or ``None`` when authentication fails:
 Start Flower with::
 
     $ celery -A myproject.celery_app flower \
-        --auth_provider=myproject.auth.CustomLoginHandler \
+        --auth-provider=myproject.auth.CustomLoginHandler \
         --auth='.*@example.com'
 
 The module must be importable from Flower's Python environment.

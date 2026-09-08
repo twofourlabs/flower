@@ -18,7 +18,8 @@ from .app import Flower
 from .urls import settings
 from .utils import abs_path, prepend_url, strtobool
 from .options import DEFAULT_CONFIG_FILE, default_options
-from .views.auth import validate_auth_option
+from .utils.authentication import validate_auth_option
+from .utils.broker import validate_broker_api
 
 logger = logging.getLogger(__name__)
 ENV_VAR_PREFIX = 'FLOWER_'
@@ -142,10 +143,20 @@ def extract_settings():
                                        keyfile=abs_path(options.keyfile))
         if options.ca_certs:
             settings['ssl_options']['ca_certs'] = abs_path(options.ca_certs)
+    elif options.certfile or options.keyfile:
+        logger.error("Both 'certfile' and 'keyfile' are required to enable SSL")
+        sys.exit(1)
 
     if options.auth and not validate_auth_option(options.auth):
         logger.error("Invalid '--auth' option: %s", options.auth)
         sys.exit(1)
+
+    if options.broker_api:
+        try:
+            validate_broker_api(options.broker_api)
+        except ValueError as exc:
+            logger.error("Invalid '--broker-api' option: %s", exc)
+            sys.exit(1)
 
 
 def is_flower_option(arg):

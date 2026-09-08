@@ -183,8 +183,9 @@ class Flower(tornado.web.Application):
                 continue
             if worker.alive:
                 continue
-            if not worker.heartbeats or \
-                    now - max(worker.heartbeats) > threshold:
+            last_seen = max(worker.heartbeats) if worker.heartbeats else \
+                getattr(worker, 'timestamp', None)
+            if not last_seen or now - last_seen >= threshold:
                 offline_workers.add(worker_name)
 
         if not offline_workers:

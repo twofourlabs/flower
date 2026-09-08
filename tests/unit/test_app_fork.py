@@ -17,7 +17,7 @@ from flower.urls import handlers, settings
 class TestQueueCache(unittest.TestCase):
     def setUp(self):
         capp = celery.Celery()
-        events = Events(capp, IOLoop.current())
+        events = Events(capp, IOLoop.current(), max_tasks_in_memory=10)
         self.app = Flower(capp=capp, events=events,
                           options=options, handlers=handlers, **settings)
         self.app._queue_cache_ttl = 5.0
@@ -77,7 +77,7 @@ class TestQueueCache(unittest.TestCase):
 class TestFlowerStopSafety(unittest.TestCase):
     def test_stop_continues_if_purge_timer_fails(self):
         capp = celery.Celery()
-        events = Events(capp, IOLoop.current())
+        events = Events(capp, IOLoop.current(), max_tasks_in_memory=10)
         app = Flower(capp=capp, events=events,
                      options=options, handlers=handlers, **settings)
         app.started = True
@@ -97,7 +97,7 @@ class TestFlowerStopSafety(unittest.TestCase):
 class TestTransportCaching(unittest.TestCase):
     def test_transport_is_cached(self):
         capp = celery.Celery()
-        events = Events(capp, IOLoop.current())
+        events = Events(capp, IOLoop.current(), max_tasks_in_memory=10)
         app = Flower(capp=capp, events=events,
                      options=options, handlers=handlers, **settings)
 
