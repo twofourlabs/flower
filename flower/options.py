@@ -4,6 +4,8 @@ from secrets import token_urlsafe
 from prometheus_client import Histogram
 from tornado.options import define, options
 
+from flower.inspector import DEFAULT_INSPECT_METHODS
+
 DEFAULT_CONFIG_FILE = 'flowerconfig.py'
 
 
@@ -17,6 +19,13 @@ define("debug", default=False,
        help="run in debug mode", type=bool)
 define("inspect_timeout", default=1000.0, type=float,
        help="inspect timeout (in milliseconds)")
+define("inspect_methods", type=str, multiple=True,
+       default=list(DEFAULT_INSPECT_METHODS),
+       help="comma-separated inspect methods to poll workers with "
+            f"(default: {','.join(DEFAULT_INSPECT_METHODS)}). Drop scheduled "
+            "on workers holding many ETA tasks: its reply lists every task on "
+            "the timer, so it grows with the backlog and can outrun "
+            "--inspect-timeout")
 define("auth", default='', type=str,
        help="regexp of emails to grant access")
 define("basic_auth", type=str, default=None, multiple=True,
