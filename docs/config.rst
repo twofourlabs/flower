@@ -279,6 +279,32 @@ The example below shows how to filter arguments and limit display lengths:
         task.result = humanize(task.result, length=20)
         return task
 
+.. _inspect_methods:
+
+inspect_methods
+~~~~~~~~~~~~~~~
+
+Default: stats,active_queues,registered,scheduled,active,reserved,revoked,conf
+
+Sets which inspect methods Flower polls workers with, as a comma-separated list.
+
+``scheduled`` serializes one entry per task on the worker's ETA timer, so its
+reply is sized by the worker's backlog rather than its configuration. On a worker
+holding a large ETA fan-out that reaches tens of megabytes — too large to read
+within :ref:`inspect_timeout`. The requester then gives up and deletes the reply
+queue, the worker finishes serializing and pushes the reply anyway, and on
+transports that cannot expire reply queues (Redis among them) that recreated key
+is never reclaimed. Dropping ``scheduled`` keeps every reply bounded::
+
+    $ celery flower --inspect-methods=stats,active_queues,registered,active,reserved,revoked,conf
+
+The other methods stay small on their own: ``active`` is bounded by concurrency
+and ``reserved`` by prefetch — a task waiting on the ETA timer is not counted as
+reserved until it fires.
+
+The Scheduled table on the worker page is empty when ``scheduled`` is not polled.
+Unknown method names are rejected at startup.
+
 .. _inspect_timeout:
 
 inspect_timeout

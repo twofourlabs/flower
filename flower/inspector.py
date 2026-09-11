@@ -9,19 +9,38 @@ from kombu.exceptions import OperationalError
 logger = logging.getLogger(__name__)
 
 
+#: Every inspect method Flower knows how to poll, and the default set.
+#: ``scheduled`` returns one entry per task on the worker's ETA timer, so its
+#: reply grows with the backlog rather than with the worker's configuration --
+#: tens of megabytes on a worker holding a large ETA fan-out. Deployments that
+#: don't need that table can drop it via --inspect-methods.
+DEFAULT_INSPECT_METHODS = ('stats', 'active_queues', 'registered', 'scheduled',
+                           'active', 'reserved', 'revoked', 'conf')
+
+
 class Inspector:
-    methods = ('stats', 'active_queues', 'registered', 'scheduled',
-               'active', 'reserved', 'revoked', 'conf')
+    #: Kept as a class attribute for backwards compatibility. The instance
+    #: attribute assigned in __init__ is what actually gets polled.
+    methods = DEFAULT_INSPECT_METHODS
     max_concurrency = len(methods)
 
-    def __init__(self, io_loop, capp, timeout, max_concurrency=None):
+    # pylint: disable=too-many-arguments
+    def __init__(self, io_loop, capp, timeout, max_concurrency=None,
+                 methods=None):
         self.io_loop = io_loop
         self.capp = capp
         self.timeout = timeout
+        if methods:
+            unknown = sorted(set(methods) - set(DEFAULT_INSPECT_METHODS))
+            if unknown:
+                raise ValueError(
+                    f"Unknown inspect method(s): {', '.join(unknown)}. "
+                    f"Valid methods are: {', '.join(DEFAULT_INSPECT_METHODS)}")
+            self.methods = tuple(methods)
         self.workers = collections.defaultdict(dict)
         self._inspect_tasks = {}
         self._inspect_max_concurrency = (
-            max_concurrency or self.max_concurrency)
+            max_concurrency or len(self.methods))
         self._inspect_semaphore = None
 
     def purge_worker(self, worker_name):
